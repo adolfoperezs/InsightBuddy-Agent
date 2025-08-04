@@ -11,6 +11,7 @@ import os
 import logging
 from typing import Dict, Any, Optional
 from datetime import datetime
+import pandas as pd
 
 from langchain.chains import RetrievalQA
 from langchain.prompts import PromptTemplate
@@ -142,13 +143,15 @@ RESPUESTA:"""
     def ask(self, 
             question: str, 
             store_name: str, 
-            k: int = 3) -> Dict[str, Any]:
+            k: int = 3,
+            df: pd.DataFrame = None) -> Dict[str, Any]:
         """Hacer una pregunta al agente.
         
         Args:
             question: Pregunta a realizar
             store_name: Nombre del vector store a usar
             k: Número de documentos a recuperar
+            df: DataFrame opcional para generar gráficos
             
         Returns:
             Diccionario con respuesta, fuentes y metadatos
@@ -190,7 +193,7 @@ RESPUESTA:"""
             }
             
             # Detectar si la pregunta requiere un gráfico y generarlo automáticamente
-            chart_path = self.plotter.generate_chart_if_needed(question, store_name)
+            chart_path = self.plotter.generate_chart_if_needed(question, store_name, df)
             if chart_path:
                 response["chart"] = chart_path
                 response["answer"] += f"\n\n📊 Gráfico generado: {chart_path}"

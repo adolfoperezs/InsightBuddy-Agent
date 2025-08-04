@@ -174,7 +174,7 @@ class DataPlotter:
             raise
     
     def create_bar_chart(self, df: pd.DataFrame, question: str) -> str:
-        """Crear gráfico de barras.
+        """Crear gráfico de barras adaptativo.
         
         Args:
             df: DataFrame con los datos
@@ -187,57 +187,66 @@ class DataPlotter:
         
         question_lower = question.lower()
         
-        # Determinar qué graficar basado en la pregunta
-        if 'ciudad' in question_lower:
-            # Ventas por ciudad
-            if 'Price' in df.columns and 'Quantity' in df.columns:
-                df['Total_Sales'] = df['Price'] * df['Quantity']
-                city_sales = df.groupby('City')['Total_Sales'].sum().sort_values(ascending=False)
+        # Detectar columnas categóricas y numéricas
+        categorical_cols = df.select_dtypes(include=['object', 'category']).columns.tolist()
+        numeric_cols = df.select_dtypes(include=['int64', 'float64']).columns.tolist()
+        
+        # Buscar palabras clave en la pregunta para determinar qué columna usar
+        target_col = None
+        value_col = None
+        
+        # Buscar columnas mencionadas en la pregunta
+        for col in categorical_cols:
+            if col.lower() in question_lower or any(word in col.lower() for word in ['gender', 'sex', 'género', 'sexo', 'hombre', 'mujer', 'male', 'female']):
+                target_col = col
+                break
+        
+        # Si no se encuentra una columna específica, usar la primera categórica
+        if target_col is None and categorical_cols:
+            target_col = categorical_cols[0]
+        
+        # Buscar columna de valores
+        if numeric_cols:
+            # Priorizar columnas que parezcan conteos o cantidades
+            for col in numeric_cols:
+                if any(word in col.lower() for word in ['count', 'quantity', 'amount', 'total', 'cantidad']):
+                    value_col = col
+                    break
+            if value_col is None:
+                value_col = numeric_cols[0]
+        
+        if target_col is None:
+            raise ValueError(f"No se encontraron columnas categóricas apropiadas en el dataset. Columnas disponibles: {df.columns.tolist()}")
+        
+        # Crear el gráfico
+        # Para columnas categóricas como género, siempre usar conteo de frecuencias
+        if target_col and any(word in target_col.lower() for word in ['gender', 'sex', 'género', 'sexo', 'type', 'category', 'categoría']):
+            # Contar frecuencias para columnas categóricas
+            grouped_data = df[target_col].value_counts().sort_values(ascending=False)
+            ylabel = 'Cantidad'
+        elif value_col and target_col:
+            # Solo usar suma de valores si tiene sentido (valores no son todos ceros)
+            sum_data = df.groupby(target_col)[value_col].sum().sort_values(ascending=False)
+            if sum_data.sum() > 0:  # Si hay valores significativos
+                grouped_data = sum_data
+                ylabel = f'Total {value_col}'
             else:
-                city_sales = df['City'].value_counts()
-            
-            city_sales.plot(kind='bar', color='skyblue')
-            plt.title('Ventas por Ciudad', fontsize=16, fontweight='bold')
-            plt.xlabel('Ciudad', fontsize=12)
-            plt.ylabel('Ventas Totales' if 'Total_Sales' in locals() else 'Número de Órdenes', fontsize=12)
-            
-        elif 'producto' in question_lower:
-            # Ventas por producto
-            if 'Price' in df.columns and 'Quantity' in df.columns:
-                df['Total_Sales'] = df['Price'] * df['Quantity']
-                product_sales = df.groupby('Product')['Total_Sales'].sum().sort_values(ascending=False)
-            else:
-                product_sales = df['Product'].value_counts()
-            
-            product_sales.plot(kind='bar', color='lightcoral')
-            plt.title('Ventas por Producto', fontsize=16, fontweight='bold')
-            plt.xlabel('Producto', fontsize=12)
-            plt.ylabel('Ventas Totales' if 'Total_Sales' in locals() else 'Número de Órdenes', fontsize=12)
-            
-        elif 'manager' in question_lower:
-            # Ventas por manager
-            if 'Price' in df.columns and 'Quantity' in df.columns:
-                df['Total_Sales'] = df['Price'] * df['Quantity']
-                manager_sales = df.groupby('Manager')['Total_Sales'].sum().sort_values(ascending=False)
-            else:
-                manager_sales = df['Manager'].value_counts()
-            
-            manager_sales.plot(kind='bar', color='lightgreen')
-            plt.title('Ventas por Manager', fontsize=16, fontweight='bold')
-            plt.xlabel('Manager', fontsize=12)
-            plt.ylabel('Ventas Totales' if 'Total_Sales' in locals() else 'Número de Órdenes', fontsize=12)
-            
+                # Si los valores son ceros, usar conteo
+                grouped_data = df[target_col].value_counts().sort_values(ascending=False)
+                ylabel = 'Cantidad'
         else:
-            # Gráfico genérico - productos más vendidos
-            if 'Quantity' in df.columns:
-                product_qty = df.groupby('Product')['Quantity'].sum().sort_values(ascending=False)
-            else:
-                product_qty = df['Product'].value_counts()
-            
-            product_qty.plot(kind='bar', color='gold')
-            plt.title('Productos Más Vendidos', fontsize=16, fontweight='bold')
-            plt.xlabel('Producto', fontsize=12)
-            plt.ylabel('Cantidad Total', fontsize=12)
+            # Contar frecuencias por defecto
+            grouped_data = df[target_col].value_counts().sort_values(ascending=False)
+            ylabel = 'Cantidad'
+        
+        # Limitar a top 10 para mejor visualización
+        if len(grouped_data) > 10:
+            grouped_data = grouped_data.head(10)
+        
+        grouped_data.plot(kind='bar', color='skyblue')
+        plt.title(f'Distribución por {target_col}', fontsize=16, fontweight='bold')
+        plt.xlabel(target_col, fontsize=12)
+        plt.ylabel(ylabel, fontsize=12)
         
         plt.xticks(rotation=45, ha='right')
         plt.tight_layout()
@@ -254,7 +263,7 @@ class DataPlotter:
         return filepath
     
     def create_line_chart(self, df: pd.DataFrame, question: str) -> str:
-        """Crear gráfico de líneas.
+        """Crear gráfico de líneas adaptativo para series temporales.
         
         Args:
             df: DataFrame con los datos
@@ -265,29 +274,51 @@ class DataPlotter:
         """
         plt.figure(figsize=(12, 8))
         
-        if 'Date' in df.columns:
-            # Ventas a lo largo del tiempo
-            if 'Price' in df.columns and 'Quantity' in df.columns:
-                df['Total_Sales'] = df['Price'] * df['Quantity']
-                daily_sales = df.groupby('Date')['Total_Sales'].sum()
-            else:
-                daily_sales = df.groupby('Date').size()
+        # Buscar columnas de fecha
+        date_cols = []
+        for col in df.columns:
+            if any(word in col.lower() for word in ['date', 'fecha', 'time', 'tiempo']):
+                try:
+                    pd.to_datetime(df[col])
+                    date_cols.append(col)
+                except:
+                    continue
+        
+        # Buscar columnas numéricas
+        numeric_cols = df.select_dtypes(include=['int64', 'float64']).columns.tolist()
+        
+        if date_cols and numeric_cols:
+            # Usar la primera columna de fecha encontrada
+            date_col = date_cols[0]
+            df[date_col] = pd.to_datetime(df[date_col])
+            df = df.sort_values(date_col)
             
-            daily_sales.plot(kind='line', marker='o', linewidth=2, markersize=4)
-            plt.title('Evolución de Ventas en el Tiempo', fontsize=16, fontweight='bold')
-            plt.xlabel('Fecha', fontsize=12)
-            plt.ylabel('Ventas Totales' if 'Total_Sales' in locals() else 'Número de Órdenes', fontsize=12)
+            # Buscar la columna numérica más apropiada
+            value_col = None
+            for col in numeric_cols:
+                if any(word in col.lower() for word in ['price', 'sales', 'amount', 'total', 'precio', 'ventas', 'cantidad']):
+                    value_col = col
+                    break
+            if value_col is None:
+                value_col = numeric_cols[0]
             
+            # Agrupar por fecha y sumar valores
+            daily_data = df.groupby(date_col)[value_col].sum()
+            
+            daily_data.plot(kind='line', marker='o', linewidth=2, markersize=4)
+            plt.title(f'Evolución de {value_col} en el Tiempo', fontsize=16, fontweight='bold')
+            plt.xlabel(date_col, fontsize=12)
+            plt.ylabel(value_col, fontsize=12)
+            
+        elif numeric_cols:
+            # Si no hay fechas, usar la primera columna numérica
+            value_col = numeric_cols[0]
+            df[value_col].plot(kind='line', marker='o', linewidth=2, markersize=4)
+            plt.title(f'Evolución de {value_col}', fontsize=16, fontweight='bold')
+            plt.xlabel('Índice', fontsize=12)
+            plt.ylabel(value_col, fontsize=12)
         else:
-            # Si no hay fecha, crear línea con índice
-            if 'Price' in df.columns:
-                df['Price'].plot(kind='line', marker='o')
-                plt.title('Evolución de Precios', fontsize=16, fontweight='bold')
-                plt.ylabel('Precio', fontsize=12)
-            else:
-                plt.text(0.5, 0.5, 'No hay datos temporales disponibles', 
-                        ha='center', va='center', transform=plt.gca().transAxes, fontsize=14)
-                plt.title('Datos Temporales No Disponibles', fontsize=16)
+            raise ValueError(f"No se encontraron columnas numéricas apropiadas para el gráfico de líneas. Columnas disponibles: {df.columns.tolist()}")
         
         plt.xticks(rotation=45)
         plt.tight_layout()
@@ -304,7 +335,7 @@ class DataPlotter:
         return filepath
     
     def create_pie_chart(self, df: pd.DataFrame, question: str) -> str:
-        """Crear gráfico de pastel.
+        """Crear gráfico de pastel adaptativo.
         
         Args:
             df: DataFrame con los datos
@@ -317,24 +348,36 @@ class DataPlotter:
         
         question_lower = question.lower()
         
-        if 'producto' in question_lower:
-            # Distribución por producto
-            if 'Price' in df.columns and 'Quantity' in df.columns:
-                df['Total_Sales'] = df['Price'] * df['Quantity']
-                data = df.groupby('Product')['Total_Sales'].sum()
-            else:
-                data = df['Product'].value_counts()
-            title = 'Distribución de Ventas por Producto'
-            
-        elif 'ciudad' in question_lower:
-            # Distribución por ciudad
-            data = df['City'].value_counts()
-            title = 'Distribución por Ciudad'
-            
-        else:
-            # Distribución genérica por producto
-            data = df['Product'].value_counts()
-            title = 'Distribución por Producto'
+        # Detectar columnas categóricas
+        categorical_cols = df.select_dtypes(include=['object', 'category']).columns.tolist()
+        
+        # Buscar la columna más apropiada basada en la pregunta
+        target_col = None
+        
+        # Buscar columnas mencionadas en la pregunta
+        for col in categorical_cols:
+            if col.lower() in question_lower or any(word in col.lower() for word in ['gender', 'sex', 'género', 'sexo', 'type', 'tipo', 'category', 'categoría']):
+                target_col = col
+                break
+        
+        # Si no se encuentra una columna específica, usar la primera categórica
+        if target_col is None and categorical_cols:
+            target_col = categorical_cols[0]
+        
+        if target_col is None:
+            raise ValueError(f"No se encontraron columnas categóricas apropiadas para el gráfico de pastel. Columnas disponibles: {df.columns.tolist()}")
+        
+        # Crear el gráfico de pastel
+        data = df[target_col].value_counts()
+        
+        # Limitar a top 8 categorías para mejor visualización
+        if len(data) > 8:
+            data = data.head(8)
+            other_count = df[target_col].value_counts().iloc[8:].sum()
+            if other_count > 0:
+                data['Otros'] = other_count
+        
+        title = f'Distribución por {target_col}'
         
         # Crear gráfico de pastel
         colors = plt.cm.Set3(np.linspace(0, 1, len(data)))
@@ -361,7 +404,7 @@ class DataPlotter:
         return filepath
     
     def create_scatter_plot(self, df: pd.DataFrame, question: str) -> str:
-        """Crear gráfico de dispersión.
+        """Crear gráfico de dispersión adaptativo.
         
         Args:
             df: DataFrame con los datos
@@ -372,21 +415,42 @@ class DataPlotter:
         """
         plt.figure(figsize=(10, 8))
         
-        if 'Price' in df.columns and 'Quantity' in df.columns:
-            plt.scatter(df['Price'], df['Quantity'], alpha=0.6, s=50)
-            plt.xlabel('Precio', fontsize=12)
-            plt.ylabel('Cantidad', fontsize=12)
-            plt.title('Relación entre Precio y Cantidad', fontsize=16, fontweight='bold')
+        # Buscar columnas numéricas
+        numeric_cols = df.select_dtypes(include=['int64', 'float64']).columns.tolist()
+        
+        if len(numeric_cols) >= 2:
+            # Usar las dos primeras columnas numéricas
+            x_col = numeric_cols[0]
+            y_col = numeric_cols[1]
             
-            # Agregar línea de tendencia
-            z = np.polyfit(df['Price'], df['Quantity'], 1)
-            p = np.poly1d(z)
-            plt.plot(df['Price'], p(df['Price']), "r--", alpha=0.8)
+            # Buscar columnas específicas mencionadas en la pregunta
+            question_lower = question.lower()
+            for col in numeric_cols:
+                if any(word in col.lower() for word in ['price', 'precio', 'cost', 'costo']):
+                    x_col = col
+                    break
+            
+            for col in numeric_cols:
+                if any(word in col.lower() for word in ['quantity', 'cantidad', 'amount', 'total']):
+                    y_col = col
+                    break
+            
+            plt.scatter(df[x_col], df[y_col], alpha=0.6, s=50)
+            plt.xlabel(x_col, fontsize=12)
+            plt.ylabel(y_col, fontsize=12)
+            plt.title(f'Relación entre {x_col} y {y_col}', fontsize=16, fontweight='bold')
+            
+            # Agregar línea de tendencia si hay suficientes datos
+            if len(df) > 1:
+                try:
+                    z = np.polyfit(df[x_col].dropna(), df[y_col].dropna(), 1)
+                    p = np.poly1d(z)
+                    plt.plot(df[x_col], p(df[x_col]), "r--", alpha=0.8)
+                except:
+                    pass  # Si no se puede calcular la tendencia, continuar sin ella
             
         else:
-            plt.text(0.5, 0.5, 'No hay datos numéricos suficientes para dispersión', 
-                    ha='center', va='center', transform=plt.gca().transAxes, fontsize=14)
-            plt.title('Datos Insuficientes para Dispersión', fontsize=16)
+             raise ValueError(f"Se necesitan al menos 2 columnas numéricas para el gráfico de dispersión. Columnas numéricas disponibles: {numeric_cols}")
         
         plt.grid(True, alpha=0.3)
         plt.tight_layout()
@@ -401,13 +465,14 @@ class DataPlotter:
         logger.info(f"Gráfico de dispersión guardado: {filepath}")
         return filepath
     
-    def generate_chart_if_needed(self, question: str, store_name: str) -> Optional[str]:
+    def generate_chart_if_needed(self, question: str, store_name: str, df: pd.DataFrame = None) -> Optional[str]:
         """
         Generar un gráfico si la pregunta lo requiere.
         
         Args:
             question: Pregunta del usuario
             store_name: Nombre del store de datos
+            df: DataFrame con los datos (opcional)
             
         Returns:
             Ruta del archivo PNG generado o None si no se requiere gráfico
@@ -418,16 +483,18 @@ class DataPlotter:
             return None
         
         try:
-            # Cargar datos desde el CSV original
-            csv_path = f"data/raw/{store_name.replace('_data', '')}-Data-Analysis.csv"
-            if not os.path.exists(csv_path):
-                csv_path = f"data/raw/Sales-Data-Analysis.csv"  # Fallback
-            
-            if not os.path.exists(csv_path):
-                logger.warning(f"No se encontró archivo CSV para {store_name}")
-                return None
-            
-            df = self.load_data_from_csv(csv_path)
+            # Si no se proporciona DataFrame, intentar cargar desde CSV
+            if df is None:
+                # Intentar cargar datos desde el CSV original
+                csv_path = f"data/raw/{store_name.replace('_data', '')}-Data-Analysis.csv"
+                if not os.path.exists(csv_path):
+                    csv_path = f"data/raw/Sales-Data-Analysis.csv"  # Fallback
+                
+                if not os.path.exists(csv_path):
+                    logger.warning(f"No se encontró archivo CSV para {store_name} y no se proporcionó DataFrame")
+                    return None
+                
+                df = self.load_data_from_csv(csv_path)
             
             # Generar el gráfico según el tipo detectado
             if chart_type == 'bar':
