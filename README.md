@@ -20,7 +20,17 @@
 
 ## 🚀 Demo
 
-![Demo GIF](https://via.placeholder.com/800x400/4CAF50/FFFFFF?text=Demo+del+Agente+Data+Analyst)
+### Interfaz Principal
+![Interfaz de la Aplicación](./assets/Insight%201.png)
+
+### Carga de Datos y Análisis
+![Carga de Datos](./assets/Insight%202.png)
+
+### Generación de Gráficos
+![Generación de Gráficos](./assets/Insight%203.png)
+
+### Resultados y Visualizaciones
+![Resultados](./assets/Insight%204.png)
 
 *Ejemplo: "Genera un gráfico para conocer cuántos hombres y mujeres han sido arrestados"*
 
