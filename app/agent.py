@@ -19,6 +19,7 @@ from langchain.schema import Document
 from dotenv import load_dotenv
 
 from .data_loader import DataLoader
+from .plotter import DataPlotter
 
 # Configurar logging
 logging.basicConfig(level=logging.INFO)
@@ -55,6 +56,9 @@ class TabularQAAgent:
         
         # Inicializar el data loader
         self.data_loader = DataLoader()
+        
+        # Inicializar el plotter
+        self.plotter = DataPlotter()
         
         # Plantilla de prompt personalizada
         self.prompt_template = self._create_prompt_template()
@@ -184,6 +188,12 @@ RESPUESTA:"""
                 "timestamp": datetime.now().isoformat(),
                 "model_used": self.model_name
             }
+            
+            # Detectar si la pregunta requiere un gráfico y generarlo automáticamente
+            chart_path = self.plotter.generate_chart_if_needed(question, store_name)
+            if chart_path:
+                response["chart"] = chart_path
+                response["answer"] += f"\n\n📊 Gráfico generado: {chart_path}"
             
             logger.info("Pregunta procesada exitosamente")
             return response
