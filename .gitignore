@@ -58,6 +58,11 @@ outputs/
 *.jpg
 *.jpeg
 
+# Allow images in assets folder
+!assets/*.png
+!assets/*.jpg
+!assets/*.jpeg
+
 # Jupyter Notebook
 .ipynb_checkpoints
 
